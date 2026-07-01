@@ -112,7 +112,6 @@ func updateRPC(username string) {
 		if err := client.SetActivity(client.Activity{}); err != nil {
 			log.Printf("error clearing Discord RPC, %v", err)
 		}
-		log.Print("nothing playing")
 		return
 	}
 	err = client.SetActivity(client.Activity{
@@ -129,7 +128,6 @@ func updateRPC(username string) {
 		log.Printf("error setting Discord RPC to track %s, %v", track.Name, err)
 		return
 	}
-	log.Printf("set Discord RPC to track %s", track.Name)
 }
 
 func getCurrentTrack(username string) (*Track, error) {
