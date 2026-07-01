@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,7 +19,14 @@ const (
 	PollInterval = 15 * time.Second
 )
 
-var APIKey = ""
+var (
+	lastfmAPIKey string
+	discordRPC   DiscordRPC
+)
+
+type DiscordRPC struct {
+	cancel func()
+}
 
 type LastFmResponse struct {
 	RecentTracks struct {
@@ -44,10 +52,10 @@ type Track struct {
 }
 
 func CurTrackURL(username string) string {
-	if APIKey == "" {
+	if lastfmAPIKey == "" {
 		panic("No API Key")
 	}
-	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, APIKey)
+	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, lastfmAPIKey)
 }
 
 func Usage() {
@@ -68,20 +76,13 @@ func main() {
 	if !set {
 		log.Fatalln("Environmental variable LASTFM_API_KEY must be set. Stopping!")
 	}
-	APIKey = apiKey
+	lastfmAPIKey = apiKey
 	if err := runRPC(parseArgs()); err != nil {
 		log.Fatalf("lastfm-rpc failed, error: %s\n", err)
 	}
 }
 
 func runRPC(username string) error {
-	err := client.Login(DiscordAppID)
-	if err != nil {
-		return err
-	}
-	defer client.Logout()
-	log.Printf("connected to Discord RPC")
-
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, os.Interrupt)
 
@@ -108,13 +109,39 @@ func updateRPC(username string) {
 		log.Printf("error fetching current track, %v", err)
 		return
 	}
-	if track == nil {
-		if err := client.SetActivity(client.Activity{}); err != nil {
-			log.Printf("error clearing Discord RPC, %v", err)
+	if track == nil { // we're not playing anything
+		if discordRPC.cancel != nil {
+			log.Print("last.fm not playing, disconnecting Discord RPC")
+			discordRPC.cancel()
 		}
 		return
 	}
-	err = client.SetActivity(client.Activity{
+	if discordRPC.cancel == nil {
+		log.Print("attempting to connect to Discord")
+		ctx, cancel := context.WithCancel(context.Background())
+		discordRPC = DiscordRPC{cancel: cancel}
+		go func() {
+			defer cancel()
+			err := client.Login(DiscordAppID)
+			if err != nil {
+				log.Printf("failed to connect to discord with error %v", err)
+			}
+			defer client.Logout()
+			log.Print("successfully connected to Discord")
+			if err := setRPC(track); err != nil {
+				log.Printf("failed to update Discord RPC %v", err)
+			}
+			<-ctx.Done()
+		}()
+		return
+	}
+	if err := setRPC(track); err != nil {
+		log.Printf("failed to update Discord RPC %v", err)
+	}
+}
+
+func setRPC(track *Track) error {
+	return client.SetActivity(client.Activity{
 		Type:              client.ActivityTypeListening,
 		StatusDisplayType: client.StatusDisplayTypeDetails,
 		Details:           track.Name,
@@ -124,10 +151,6 @@ func updateRPC(username string) {
 		SmallImage:        "lastfm-icon",
 		SmallText:         "last.fm",
 	})
-	if err != nil {
-		log.Printf("error setting Discord RPC to track %s, %v", track.Name, err)
-		return
-	}
 }
 
 func getCurrentTrack(username string) (*Track, error) {
