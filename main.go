@@ -47,7 +47,7 @@ func CurTrackURL(username string) string {
 	if APIKey == "" {
 		panic("No API Key")
 	}
-	return fmt.Sprintf("/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, APIKey)
+	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, APIKey)
 }
 
 func Usage() {
@@ -131,8 +131,7 @@ func updateRPC(username string) {
 }
 
 func getCurrentTrack(username string) (*Track, error) {
-	url := fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, APIKey)
-	resp, err := http.Get(url)
+	resp, err := http.Get(CurTrackURL(username))
 	if err != nil {
 		return nil, err
 	}

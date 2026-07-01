@@ -19,5 +19,5 @@ go build
 Once installed, simply run it, giving it your last.fm username
 
 ```bash
-lastfm-rpc -u <username>
+lastfm-rpc <username>
 ```
