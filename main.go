@@ -125,6 +125,7 @@ func updateRPC(username string) {
 			err := client.Login(DiscordAppID)
 			if err != nil {
 				log.Printf("failed to connect to discord with error %v", err)
+				return
 			}
 			defer client.Logout()
 			log.Print("successfully connected to Discord")
