@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"slices"
 	"syscall"
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/adrg/xdg"
 	"github.com/jsdoublel/rich-go/client"
 )
 
@@ -20,12 +25,20 @@ const (
 )
 
 var (
-	lastfmAPIKey string
-	discordRPC   DiscordRPC
+	discordRPC DiscordRPC
+	config     Config
+
+	configPath    = path.Join(xdg.ConfigHome, "lastfm-rpc.toml")
+	defaultConfig = []byte("username=\"user name here\"\napi_key=\"api key here\"")
 )
 
 type DiscordRPC struct {
 	cancel func()
+}
+
+type Config struct {
+	Username string `toml:"username"`
+	ApiKey   string `toml:"api_key"`
 }
 
 type LastFmResponse struct {
@@ -51,49 +64,57 @@ type Track struct {
 	} `json:"@attr,omitempty"`
 }
 
-func CurTrackURL(username string) string {
-	if lastfmAPIKey == "" {
-		panic("No API Key")
+func CurTrackURL() string {
+	if config.ApiKey == "" || config.Username == "" {
+		panic("missing config")
 	}
-	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", username, lastfmAPIKey)
+	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", config.Username, config.ApiKey)
 }
 
 func Usage() {
 	fmt.Printf("Usage: %s <username>\n", os.Args[0])
 }
 
-// Parses command line argument(s) (i.e., username)
-func parseArgs() string {
-	if len(os.Args) != 2 {
-		Usage()
-		os.Exit(1)
+func getConfig() error {
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if err := os.WriteFile(configPath, []byte(defaultConfig), 0o644); err != nil {
+			panic("could not write default config")
+		}
+		fmt.Printf("Config file created at %s. Please fill in username/api key.", configPath)
+		return errors.New("config does not exist")
 	}
-	return os.Args[1]
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		log.Printf("error, could not read config file, %v", err)
+	}
+	if slices.Equal(data, defaultConfig) {
+		return errors.New("config is the default config (please add username/api key)")
+	}
+	_, err = toml.Decode(string(data), &config)
+	return err
 }
 
 func main() {
-	apiKey, set := os.LookupEnv("LASTFM_API_KEY")
-	if !set {
-		log.Fatalln("Environmental variable LASTFM_API_KEY must be set. Stopping!")
+	if err := getConfig(); err != nil {
+		log.Fatalf("could not load config, %v", err)
 	}
-	lastfmAPIKey = apiKey
-	if err := runRPC(parseArgs()); err != nil {
+	if err := runRPC(); err != nil {
 		log.Fatalf("lastfm-rpc failed, error: %s\n", err)
 	}
 }
 
-func runRPC(username string) error {
+func runRPC() error {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, os.Interrupt)
 
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
 
-	updateRPC(username) // avoid delay for first update
+	updateRPC() // avoid delay for first update
 	for {
 		select {
 		case <-ticker.C:
-			updateRPC(username)
+			updateRPC()
 		case <-sc:
 			log.Print("shutting down")
 			return nil
@@ -103,8 +124,8 @@ func runRPC(username string) error {
 }
 
 // Updates Discord RPC based on current track being played.
-func updateRPC(username string) {
-	track, err := getCurrentTrack(username)
+func updateRPC() {
+	track, err := getCurrentTrack()
 	if err != nil {
 		log.Printf("error fetching current track, %v", err)
 		return
@@ -154,8 +175,8 @@ func setRPC(track *Track) error {
 	})
 }
 
-func getCurrentTrack(username string) (*Track, error) {
-	resp, err := http.Get(CurTrackURL(username))
+func getCurrentTrack() (*Track, error) {
+	resp, err := http.Get(CurTrackURL())
 	if err != nil {
 		return nil, err
 	}

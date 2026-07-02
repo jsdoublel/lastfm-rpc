@@ -16,8 +16,11 @@ cd lastfm-rpc
 go build
 ```
 
-Once installed, simply run it, giving it your last.fm username
+In order to function, the application will need your last.fm username and a last.fm API key. Both of these can be provided in a `lastfm-rpc.toml` file, located in your config file directory (for instance `.config/` on Linux). If you run the application, a template for this file will be created, and its location will be printed.
+
+Once installed and configured, simply run the executable
 
 ```bash
-lastfm-rpc <username>
+lastfm-rpc
 ```
+
