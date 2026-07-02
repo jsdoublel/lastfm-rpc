@@ -168,7 +168,7 @@ func updateRPC() {
 func setRPC(track *Track) error {
 	return client.SetActivity(client.Activity{
 		Type:              client.ActivityTypeListening,
-		StatusDisplayType: client.StatusDisplayTypeDetails,
+		StatusDisplayType: client.StatusDisplayTypeState,
 		Details:           track.Name,
 		State:             track.Artist.Text,
 		LargeImage:        getAlbumArtURL(*track),
