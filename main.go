@@ -71,12 +71,11 @@ func CurTrackURL() string {
 	return fmt.Sprintf("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=%s&api_key=%s&format=json&limit=1", config.Username, config.ApiKey)
 }
 
-func Usage() {
-	fmt.Printf("Usage: %s <username>\n", os.Args[0])
-}
-
 func getConfig() error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(path.Dir(configPath), 0755); err != nil {
+			panic(fmt.Sprintf("could not create config directory: %v", err))
+		}
 		if err := os.WriteFile(configPath, []byte(defaultConfig), 0o644); err != nil {
 			panic("could not write default config")
 		}
@@ -117,6 +116,9 @@ func runRPC() error {
 			updateRPC()
 		case <-sc:
 			log.Print("shutting down")
+			if discordRPC.cancel != nil {
+				discordRPC.cancel()
+			}
 			return nil
 		}
 
@@ -134,6 +136,7 @@ func updateRPC() {
 		if discordRPC.cancel != nil {
 			log.Print("last.fm not playing, disconnecting Discord RPC")
 			discordRPC.cancel()
+			discordRPC.cancel = nil // clear cancel, so we reconnect later
 		}
 		return
 	}
@@ -200,9 +203,11 @@ func getCurrentTrack() (*Track, error) {
 
 func getAlbumArtURL(track Track) (artworkURL string) {
 	for _, img := range track.Image {
-		artworkURL = img.Text
-		if img.Size == "extralarge" && img.Text != "" {
-			break
+		if img.Text != "" {
+			artworkURL = img.Text
+			if img.Size == "extralarge" && img.Text != "" {
+				break
+			}
 		}
 	}
 	return
