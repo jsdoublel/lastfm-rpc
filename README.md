@@ -1,6 +1,6 @@
 # last.fm RPC
 
-Discord RPC implementation for [last.fm](last.fm), primarily for my own use. Requires that you have a last.fm API key and that the environmental variable `LASTFM_API_KEY` be set to that API key.
+Discord RPC implementation for [last.fm](last.fm), primarily for my own use.
 
 This program can be installed with
 
