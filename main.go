@@ -130,13 +130,18 @@ func updateRPC() {
 	track, err := getCurrentTrack()
 	if err != nil {
 		log.Printf("error fetching current track, %v", err)
-		return
+		if discordRPC.cancel != nil {
+			log.Print("disconnecting Discord RPC")
+			discordRPC.cancel()
+			discordRPC.cancel = nil
+			return
+		}
 	}
 	if track == nil { // we're not playing anything
 		if discordRPC.cancel != nil {
 			log.Print("last.fm not playing, disconnecting Discord RPC")
 			discordRPC.cancel()
-			discordRPC.cancel = nil // clear cancel, so we reconnect later
+			discordRPC.cancel = nil
 		}
 		return
 	}
@@ -166,6 +171,9 @@ func updateRPC() {
 }
 
 func setRPC(track *Track) error {
+	if track == nil {
+		return errors.New("called setRPC with nil track")
+	}
 	return client.SetActivity(client.Activity{
 		Type:              client.ActivityTypeListening,
 		StatusDisplayType: client.StatusDisplayTypeState,
@@ -173,8 +181,6 @@ func setRPC(track *Track) error {
 		State:             track.Artist.Text,
 		LargeImage:        getAlbumArtURL(*track),
 		LargeText:         track.Album.Text,
-		SmallImage:        "lastfm-icon",
-		SmallText:         "last.fm",
 	})
 }
 
